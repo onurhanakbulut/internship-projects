@@ -28,4 +28,13 @@ Proje Hakkında
 
 
 
-![Uygulama Görseli](geoshape1_result_debug/result.jpg)
+![Uygulama Görseli](geoshape1_result_debug/result.png)
+
+----------------------------------
+
+
+![Uygulama Görseli](geoshape2_result_debug/img.jpg)
+
+
+
+![Uygulama Görseli](geoshape2_result_debug/result.png)
