@@ -2,6 +2,8 @@ from ultralytics import YOLO
 import cv2
 from utils import get_tracker
 import math
+import numpy as np
+
 
 # =============================================================================
 # YOLO ile araçları tespit etmek#####tmm
@@ -16,11 +18,22 @@ import math
 
 
 
-model = YOLO('yolov8n.pt')
+roi_groups = list(np.load("roi_groups.npy", allow_pickle=True))
+for i, group in enumerate(roi_groups):
+    print(f"ROI {i+1}: {group}")
+
+model = YOLO('yolov8m.pt')
 
 tracker = get_tracker()
 
 cap = cv2.VideoCapture('data/traffic.mp4')
+
+
+
+cv2.namedWindow("YOLO + DEEPSORT", cv2.WINDOW_NORMAL)
+cv2.resizeWindow("YOLO + DEEPSORT", 1280, 720)
+
+
 
 allowed_labels = ['car', 'truck', 'bus', 'motorcycle']
 
@@ -42,6 +55,18 @@ while cap.isOpened():
     
     
     results = model(frame)
+    
+    for group in roi_groups:
+        for i in range(len(group)):
+            pt1 = group[i]
+            pt2 = group[(i+1) % len(group)]
+            cv2.line(frame, pt1, pt2, (255, 0, 0), 2)
+    
+    
+    
+    
+    
+    
 
     #annotated_frame = results[0].plot()
    
@@ -119,6 +144,7 @@ while cap.isOpened():
         
   
     
+
     cv2.imshow("YOLO + DEEPSORT", frame)
     
     
