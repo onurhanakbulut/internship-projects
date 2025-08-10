@@ -3,7 +3,8 @@ import cv2
 from utils import get_tracker
 import math
 import numpy as np
-
+import torch
+import time
 
 # =============================================================================
 # YOLO ile araçları tespit etmek----------
@@ -15,12 +16,43 @@ import numpy as np
 # Her şeritte geçen araçları ayrı sayaçlarla saymak---------
 #
 # optimizasyon
+
+
+
+# =============================================================================
+# Daha hafif model kullan
+# yolov8m.pt → yolov8n.pt veya yolov8s.pt
+# 
+# img size küçült
+# 1280p kareyi tam beslemek yerine imgsz=640 (veya 512).
+# 
+# Half precision (FP16)
+# GPU’da ciddi hız kazandırır: half=True
+# 
+# Her karede tespit yapma (frame skipping)
+# Örn. her 2 karede bir YOLO çalıştır; aradaki karelerde sadece takip güncelle.
+
+# Gösterim boyutunu küçült
+# cv2.resizeWindow(...) yaptın, iyi; gerekirse frame’i de küçült.
+
+# =============================================================================
 # =============================================================================
 
 
 
 
 roi_groups = list(np.load("roi_groups.npy", allow_pickle=True))
+
+FRAME_TTL = 300
+COUNT_TTL = 150
+CLEAN_EVERY = 120
+
+frame_idx = 0
+last_seen = {}
+counted_ids = [dict() for _ in range(len(roi_groups))]
+
+prev_time = time.time()
+fps=0
 
 
 def points_in_polygon(pt, poly):
@@ -29,7 +61,7 @@ def points_in_polygon(pt, poly):
 
 
 lane_count = [0] * len(roi_groups)      # lane_count = [0,0,0,0]
-counted_ids = [set() for _ in range(len(roi_groups))]
+
 
 
 
@@ -38,6 +70,7 @@ for i, group in enumerate(roi_groups):
     print(f"ROI {i+1}: {group}")
 
 model = YOLO('yolov8s.pt')
+half = True if torch.cuda.is_available() else False
 
 tracker = get_tracker()
 
@@ -46,7 +79,7 @@ cap = cv2.VideoCapture('data/traffic.mp4')
 
 
 cv2.namedWindow("YOLO + DEEPSORT", cv2.WINDOW_NORMAL)
-cv2.resizeWindow("YOLO + DEEPSORT", 1280, 720)
+cv2.resizeWindow("YOLO + DEEPSORT", 960, 540)
 
 
 
@@ -62,6 +95,10 @@ color_map = {
 
 
 
+
+
+
+
 while cap.isOpened():
     ret, frame = cap.read()
     if not ret:
@@ -70,7 +107,7 @@ while cap.isOpened():
     
     
     
-    results = model(frame, verbose = False)
+    results = model(frame, imgsz=640, half=half, verbose = False)
     
     for group in roi_groups:
         for i in range(len(group)):
@@ -129,8 +166,17 @@ while cap.isOpened():
         
         inside_idx =  []
         for i, poly in enumerate(roi_groups):
-            if points_in_polygon((cx, cy), poly):
-                inside_idx.append(i)
+            inside = points_in_polygon((cx, cy), poly)
+            
+            
+            if inside:
+                if track_id not in counted_ids[i]:
+                    lane_count[i] += 1
+                    counted_ids[i][track_id] =  frame_idx
+                    
+            else:
+                if track_id in counted_ids[i]:
+                    counted_ids[i].pop(track_id, None)
         
         
 # =============================================================================
@@ -140,10 +186,12 @@ while cap.isOpened():
         
 
 
-        for i in inside_idx:
-            if track_id not in counted_ids[i]:
-                counted_ids[i].add(track_id)
-                lane_count[i] += 1
+# =============================================================================
+#         for i in inside_idx:
+#             if track_id not in counted_ids[i]:
+#                 counted_ids[i][track_id] = frame_idx
+#                 lane_count[i] += 1
+# =============================================================================
         
         
         
@@ -161,6 +209,12 @@ while cap.isOpened():
         frame_centers.append((cx, cy))
         
         
+        
+        last_seen[track_id] = frame_idx
+        
+        
+
+                
 
         
         label = track.get_det_class() or 'Vehicle'
@@ -185,10 +239,58 @@ while cap.isOpened():
         
         for i, c in enumerate(lane_count):
             cv2.putText(frame, f"Lane {i+1}: {c}",(20, 40+30*i), cv2.FONT_HERSHEY_SIMPLEX, 0.9, (50,255,50),2)
+            
+            
+            
+        
+        
+        
+        
+        
+        if frame_idx % CLEAN_EVERY == 0:
+            stale_ids = []
+            for tid, f in last_seen.items():
+                if frame_idx - f > FRAME_TTL:
+                    stale_ids.append(tid)
+                    
+            for tid in stale_ids:
+                last_seen.pop(tid, None)
+                
+                
+                
+            for i in range(len(counted_ids)):
+                old_ids = []
+                for tid, f in counted_ids[i].items():
+                    if frame_idx - f > COUNT_TTL:
+                        old_ids.append(tid)
+                        
+                for tid in old_ids:
+                    counted_ids[i].pop(tid, None)
+                    
+                    
+
+            
+                    
+                    
+                    
+        current_time = time.time()
+        elapsed = current_time - prev_time
+        if elapsed > 0:
+            fps=1 / elapsed
+        else:
+            fps = 0
+        prev_time = current_time
+        
+        frame_width = frame.shape[1]
+        cv2.putText(frame, f"FPS: {fps:.2f}", (frame_width - 150, 30), cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0,255,0), 2)
+            
         
   
     
-
+      
+    frame_idx += 1
+    
+    
     cv2.imshow("YOLO + DEEPSORT", frame)
     
     
