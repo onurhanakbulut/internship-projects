@@ -59,9 +59,6 @@ while True:
     for point in roi_points:
         cv2.circle(temp_frame, point, 5, (0, 0, 255), -1)
         
-    if len(roi_points) > 1:
-        for i in range (len(roi_points) - 1):
-            cv2.line(temp_frame, roi_points[i], roi_points[i+1], (255, 0, 0), 2)
     
     cv2.imshow('DRAW ROI', temp_frame)
     

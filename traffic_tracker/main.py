@@ -6,23 +6,38 @@ import numpy as np
 
 
 # =============================================================================
-# YOLO ile araçları tespit etmek#####tmm
+# YOLO ile araçları tespit etmek----------
 # 
-# ROI ile 4 şerit bölgesi tanımlamak
+# ROI ile 4 şerit bölgesi tanımlamak---------
 # 
-# DeepSORT ile araçları takip edip aynı ID'nin tekrar sayılmasını önlemek
+# DeepSORT ile araçları takip edip aynı ID'nin tekrar sayılmasını önlemek------------
 # 
-# Her şeritte geçen araçları ayrı sayaçlarla saymak
+# Her şeritte geçen araçları ayrı sayaçlarla saymak---------
+#
+# optimizasyon
 # =============================================================================
 
 
 
 
 roi_groups = list(np.load("roi_groups.npy", allow_pickle=True))
+
+
+def points_in_polygon(pt, poly):
+    return cv2.pointPolygonTest(np.array(poly, np.int32), pt, False) >= 0
+
+
+
+lane_count = [0] * len(roi_groups)      # lane_count = [0,0,0,0]
+counted_ids = [set() for _ in range(len(roi_groups))]
+
+
+
+
 for i, group in enumerate(roi_groups):
     print(f"ROI {i+1}: {group}")
 
-model = YOLO('yolov8m.pt')
+model = YOLO('yolov8s.pt')
 
 tracker = get_tracker()
 
@@ -41,7 +56,8 @@ color_map = {
     'car' : (0, 255, 0),
     'truck' : (255, 0, 0),
     'bus' : (0, 0, 255),
-    'motorcycle' : (255, 255, 0)
+    'motorcycle' : (255, 255, 0),
+    'heavy' : (0, 128, 255)
     }
 
 
@@ -54,12 +70,15 @@ while cap.isOpened():
     
     
     
-    results = model(frame)
+    results = model(frame, verbose = False)
     
     for group in roi_groups:
         for i in range(len(group)):
-            pt1 = group[i]
-            pt2 = group[(i+1) % len(group)]
+            #pt1 = group[i]
+            #pt2 = group[(i+1) % len(group)]
+
+            pt1 = tuple(group[i])
+            pt2 = tuple(group[(i + 1) % len(group)])
             cv2.line(frame, pt1, pt2, (255, 0, 0), 2)
     
     
@@ -106,6 +125,28 @@ while cap.isOpened():
         cy = int((y1 + y2) / 2)
         
         
+        
+        
+        inside_idx =  []
+        for i, poly in enumerate(roi_groups):
+            if points_in_polygon((cx, cy), poly):
+                inside_idx.append(i)
+        
+        
+# =============================================================================
+#         inside_idx = [i for i, poly in enumerate(roi_groups)    #list comprehension 
+#                       if points_in_polygon((cx, cy), poly)]
+# =============================================================================
+        
+
+
+        for i in inside_idx:
+            if track_id not in counted_ids[i]:
+                counted_ids[i].add(track_id)
+                lane_count[i] += 1
+        
+        
+        
         too_close = False
         
         for (px, py) in frame_centers:
@@ -141,6 +182,9 @@ while cap.isOpened():
         cv2.putText(frame, text, (x1 + 2, y1 - 5), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 0, 0), 2)
         
         cv2.circle(frame, (cx, cy), 12, (0, 0, 255), -1)
+        
+        for i, c in enumerate(lane_count):
+            cv2.putText(frame, f"Lane {i+1}: {c}",(20, 40+30*i), cv2.FONT_HERSHEY_SIMPLEX, 0.9, (50,255,50),2)
         
   
     
