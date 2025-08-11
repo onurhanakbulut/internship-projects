@@ -5,12 +5,16 @@ def get_tracker():
     
     
     return DeepSort(
-        max_age = 30,
-        n_init = 3,
-        nms_max_overlap = 0.7,
-        max_cosine_distance = 0.4,
-        nn_budget = None, 
-        override_track_class = None
+        max_age = 15,
+        n_init = 2,
+        nms_max_overlap = 0.6,
+        max_cosine_distance = 0.2,
+        nn_budget = 80, 
+        override_track_class = None,
+        
+        
+        embedder = 'mobilenet',
+        embedder_gpu=True
     )
 
 

@@ -6,3 +6,9 @@ traffic_tracker/data/
 
 # YOLO model dosyaları
 *.pt
+
+
+
+
+# txt sonuc dosyaları
+*.txt

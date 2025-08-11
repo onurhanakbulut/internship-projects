@@ -6,6 +6,8 @@ import numpy as np
 import torch
 import time
 
+
+
 # =============================================================================
 # YOLO ile araçları tespit etmek----------
 # 
@@ -29,12 +31,10 @@ import time
 # Half precision (FP16)
 # GPU’da ciddi hız kazandırır: half=True
 # 
-# Her karede tespit yapma (frame skipping)
-# Örn. her 2 karede bir YOLO çalıştır; aradaki karelerde sadece takip güncelle.
-
 # Gösterim boyutunu küçült
 # cv2.resizeWindow(...) yaptın, iyi; gerekirse frame’i de küçült.
-
+#
+# deepsort optimizasyonu ve embedder = gpu
 # =============================================================================
 # =============================================================================
 
@@ -43,8 +43,8 @@ import time
 
 roi_groups = list(np.load("roi_groups.npy", allow_pickle=True))
 
+
 FRAME_TTL = 300
-COUNT_TTL = 150
 CLEAN_EVERY = 120
 
 frame_idx = 0
@@ -65,9 +65,13 @@ lane_count = [0] * len(roi_groups)      # lane_count = [0,0,0,0]
 
 
 
+##ROI KONUMLARI PRINT
+# =============================================================================
+# for i, group in enumerate(roi_groups):
+#     print(f"ROI {i+1}: {group}")
+# =============================================================================
 
-for i, group in enumerate(roi_groups):
-    print(f"ROI {i+1}: {group}")
+
 
 model = YOLO('yolov8s.pt')
 half = True if torch.cuda.is_available() else False
@@ -98,17 +102,16 @@ color_map = {
 
 
 
-
 while cap.isOpened():
+    t0 = time.perf_counter()    #DELAY
     ret, frame = cap.read()
+    t1 = time.perf_counter()    #DELAY
     if not ret:
         break
     
     
     
-    
-    results = model(frame, imgsz=640, half=half, verbose = False)
-    
+#####---------------ROI SINIRLARI------------------------------  
     for group in roi_groups:
         for i in range(len(group)):
             #pt1 = group[i]
@@ -117,18 +120,19 @@ while cap.isOpened():
             pt1 = tuple(group[i])
             pt2 = tuple(group[(i + 1) % len(group)])
             cv2.line(frame, pt1, pt2, (255, 0, 0), 2)
+            
+            
+            
+            
+    results = model(frame, imgsz=640, half=half, verbose = False, classes=[2, 3, 5, 7])
+    t2 = time.perf_counter()        #DELAY
     
     
     
     
     
-    
-
-    #annotated_frame = results[0].plot()
-   
+#############--------------------YOLO OUTPUT --->>> DEEPSORT INPUT
     detections =  []
-   
-   
     for box in results[0].boxes:
         class_id = int(box.cls[0])
         conf = float(box.conf[0])
@@ -146,9 +150,11 @@ while cap.isOpened():
     
         
     tracks = tracker.update_tracks(detections, frame=frame)
+    t3 = time.perf_counter()        ##DELAY
     
-    frame_centers = []
     
+#####------------------TRACK DONGUSU------------------------
+    frame_centers = []  
     for track in tracks:
         if not track.is_confirmed():
             continue
@@ -163,8 +169,8 @@ while cap.isOpened():
         
         
         
+######--------------------ROI GİRDİ ÇIKTI KONTROLÜ VE SAYAÇ----------------------
         
-        inside_idx =  []
         for i, poly in enumerate(roi_groups):
             inside = points_in_polygon((cx, cy), poly)
             
@@ -178,7 +184,7 @@ while cap.isOpened():
                 if track_id in counted_ids[i]:
                     counted_ids[i].pop(track_id, None)
         
-        
+        total_car_count = sum(lane_count)
 # =============================================================================
 #         inside_idx = [i for i, poly in enumerate(roi_groups)    #list comprehension 
 #                       if points_in_polygon((cx, cy), poly)]
@@ -186,19 +192,13 @@ while cap.isOpened():
         
 
 
-# =============================================================================
-#         for i in inside_idx:
-#             if track_id not in counted_ids[i]:
-#                 counted_ids[i][track_id] = frame_idx
-#                 lane_count[i] += 1
-# =============================================================================
         
-        
-        
+#########----------------------100 PİKSELDEN YAKINSA SİL-----------------------     
+      
         too_close = False
         
         for (px, py) in frame_centers:
-            if math.hypot(cx - px, cy - py) < 100:
+            if math.hypot(cx - px, cy - py) < 100:      ###öklid
                 too_close = True
                 break
             
@@ -215,7 +215,7 @@ while cap.isOpened():
         
 
                 
-
+##########----------------------OPENCV YAZI İŞLEMLERİ-----------------------
         
         label = track.get_det_class() or 'Vehicle'
         
@@ -235,18 +235,18 @@ while cap.isOpened():
         
         cv2.putText(frame, text, (x1 + 2, y1 - 5), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 0, 0), 2)
         
-        cv2.circle(frame, (cx, cy), 12, (0, 0, 255), -1)
+        cv2.circle(frame, (cx - 40, cy + 50), 12, (0, 0, 255), -1)
         
         for i, c in enumerate(lane_count):
-            cv2.putText(frame, f"Lane {i+1}: {c}",(20, 40+30*i), cv2.FONT_HERSHEY_SIMPLEX, 0.9, (50,255,50),2)
+            cv2.putText(frame, f"Serit {i+1}: {c}",(20, 40+30*i), cv2.FONT_HERSHEY_SIMPLEX, 0.9, (50,255,50),2)
             
+        cv2.putText(frame, f"Toplam Arac: {total_car_count}", (20, 40 + 30*len(lane_count)), cv2.FONT_HERSHEY_SIMPLEX, 0.9, (0,255,255), 2)    
             
-            
         
         
         
         
-        
+#####-------------------120 FRAMEDE BİR ESKİ IDLERİ TEMİZLE------------------
         if frame_idx % CLEAN_EVERY == 0:
             stale_ids = []
             for tid, f in last_seen.items():
@@ -256,39 +256,38 @@ while cap.isOpened():
             for tid in stale_ids:
                 last_seen.pop(tid, None)
                 
-                
-                
-            for i in range(len(counted_ids)):
-                old_ids = []
-                for tid, f in counted_ids[i].items():
-                    if frame_idx - f > COUNT_TTL:
-                        old_ids.append(tid)
-                        
-                for tid in old_ids:
-                    counted_ids[i].pop(tid, None)
-                    
-                    
-
-            
-                    
-                    
-                    
-        current_time = time.time()
-        elapsed = current_time - prev_time
-        if elapsed > 0:
-            fps=1 / elapsed
-        else:
-            fps = 0
-        prev_time = current_time
-        
-        frame_width = frame.shape[1]
-        cv2.putText(frame, f"FPS: {fps:.2f}", (frame_width - 150, 30), cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0,255,0), 2)
-            
-        
-  
     
-      
-    frame_idx += 1
+        t4 = time.perf_counter()        #DELAY
+        print(f"R:{(t1-t0)*1000:.1f}ms  D:{(t2-t1)*1000:.1f}ms  T:{(t3-t2)*1000:.1f}ms  Draw:{(t4-t3)*1000:.1f}ms")       
+                    
+    
+            
+########---------------------------------FPS-------------------------------
+    current_time = time.time()
+    elapsed = current_time - prev_time
+    if elapsed > 0:
+        fps=1 / elapsed
+    else:
+        fps = 0
+    prev_time = current_time
+        
+        
+########------------------------FPS YAZILARI-------------------------------
+    frame_width = frame.shape[1]
+    fps_text = f"FPS: {fps:.2f}"
+    (tw, th), _ = cv2.getTextSize(fps_text, cv2.FONT_HERSHEY_SIMPLEX, 0.8, 2)
+        
+    cv2.rectangle(frame, (frame_width-tw-20, 10), (frame_width - 10, 10+th+10), (0,0,0), -1)
+    cv2.putText(frame, fps_text, (frame_width - tw - 15, 10 + th), cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0,255,0), 2)        
+#*******************************    
+    frame_idx += 1  
+    
+    
+    
+    
+    
+    
+    
     
     
     cv2.imshow("YOLO + DEEPSORT", frame)
@@ -296,25 +295,30 @@ while cap.isOpened():
     
     if cv2.waitKey(1) & 0xFF == ord("q"):
         break
+
+    
+
+
+
+#=================================================================
+print("\n==== ŞERİT BAZLI SONUÇLAR ====")
+for i, c in enumerate(lane_count):
+    print(f"Şerit {i+1}: {c}")
+
+total_car_count = sum(lane_count)
+print(f"Toplam Araç: {total_car_count}")
+
+
+with open("sonuclar.txt", "w", encoding="utf-8") as f:
+    f.write("==== ŞERİT BAZLI SONUÇLAR ====\n")
+    for i, c in enumerate(lane_count):
+        f.write(f"Şerit {i+1}: {c}\n")
+    f.write(f"Toplam Araç: {total_car_count}\n")    
+
+#=================================================================    
     
 cap.release()
 cv2.destroyAllWindows()
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 
 
