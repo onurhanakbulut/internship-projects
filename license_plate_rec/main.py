@@ -1,11 +1,43 @@
 from ultralytics import YOLO
 import cv2
+import numpy as np
 
 
 
 
 cap = cv2.VideoCapture('data/plt.mp4')
 model = YOLO('models/yolov8n.pt')
+
+
+
+def img_process(frame, detections):         #gray filter->
+    
+    for (x1, y1, x2, y2) in detections:
+        pro_res = []
+        roi = frame[y1:y2, x1:x2]
+        gray = cv2.cvtColor(roi, cv2.COLOR_BGR2GRAY)
+        
+        
+        
+        
+        
+        
+        
+        
+        pro_res.append({'bbox': (x1, y1, x2, y2), 'gray': gray})
+        
+        
+        
+    
+    
+    
+    return pro_res
+        
+        
+
+
+
+
 
 cv2.namedWindow('PLATE', cv2.WINDOW_NORMAL)
 cv2.resizeWindow('PLATE', 960, 540)
@@ -30,6 +62,8 @@ while cap.isOpened():
     
     #print(detections)
     
+    
+
     
     
     
