@@ -2,6 +2,7 @@
 
 #data
 traffic_tracker/data/
+license_plate_rec/data/
 
 
 # YOLO model dosyaları
