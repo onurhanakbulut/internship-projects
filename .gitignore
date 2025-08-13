@@ -13,3 +13,7 @@ license_plate_rec/data/
 
 # txt sonuc dosyaları
 *.txt
+
+
+# debug ciktilari
+license_plate_rec/debug_out/
