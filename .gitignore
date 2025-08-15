@@ -4,6 +4,9 @@
 traffic_tracker/data/
 license_plate_rec/data/
 
+#ciktilar
+license_plate_rec/img_crops/
+
 
 # YOLO model dosyaları
 *.pt
