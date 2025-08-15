@@ -2,9 +2,14 @@ from ultralytics import YOLO
 import cv2
 import os
 import numpy as np
+from plate_select import extract_and_save_plate_crops
+
+
+
+
 
 model = YOLO('models/yolov8m.pt')
-img = cv2.imread('data/car1.jpg')
+img = cv2.imread('data/car9.jpg')
 
 os.makedirs('img_crops', exist_ok=True)
 
@@ -107,17 +112,85 @@ def median_filter(items, source1, source2, ksize: int=3):
 
     
 
-def binary(items):
+# =============================================================================
+# def binary(items):
+#     for it in items:
+#         src = it.get('median')
+#         
+#         
+#         _, binimg = cv2.threshold(src, 120, 255, cv2.THRESH_BINARY)
+#         
+#         it['bin'] = binimg
+#         
+#     return items
+# =============================================================================
+        
+
+
+def binarize_adaptive(items, block_ratio=0.10, C=12,
+                      method='gaussian',      # 'gaussian' | 'mean'
+                      invert=None,            # None => otomatik, True/False => sabit
+                      use_clahe=True,
+                      post_median=3,
+                      post_close_iter=1):
+    """
+    items[i]['bin'] üretir. invert=None ise otomatik (BINARY/BINARY_INV) seçer.
+    """
     for it in items:
-        src = it.get('median')
-        
-        
-        _, binimg = cv2.threshold(src, 170, 255, cv2.THRESH_BINARY)
-        
+        src = it.get('median', it['gray'])   # median yoksa gray kullan
+        # güvenli uint8
+        if src.dtype != np.uint8:
+            src = cv2.normalize(src, None, 0, 255, cv2.NORM_MINMAX).astype(np.uint8)
+
+        # (opsiyonel) yerel kontrast artır
+        if use_clahe:
+            clh = cv2.createCLAHE(clipLimit=1.6, tileGridSize=(8, 8))
+            src = clh.apply(src)
+
+        # pencere boyutu: ROI yüksekliğinin ~%10'u (tek sayı)
+        h = src.shape[0]
+        block = max(3, int(round(block_ratio * h)))
+        if block % 2 == 0: block += 1
+
+        # yöntem seçimi
+        adapt = cv2.ADAPTIVE_THRESH_GAUSSIAN_C if method.lower().startswith('g') \
+                else cv2.ADAPTIVE_THRESH_MEAN_C
+
+        def _th(flag):
+            b = cv2.adaptiveThreshold(src, 255, adapt, flag, block, C)
+            if post_median and post_median >= 3:
+                k = post_median + (1 - post_median % 2)  # tek yap
+                b = cv2.medianBlur(b, k)
+            if post_close_iter and post_close_iter > 0:
+                b = cv2.morphologyEx(b, cv2.MORPH_CLOSE, np.ones((3,3), np.uint8),
+                                     iterations=int(post_close_iter))
+            return b
+
+        if invert is None:
+            # Otomatik kutup: iki sonucu da hesapla, beyaz oranı 0.25–0.75 aralığa yakın olanı seç
+            b1 = _th(cv2.THRESH_BINARY)
+            b2 = _th(cv2.THRESH_BINARY_INV)
+            wr1 = (b1 > 0).mean()
+            wr2 = (b2 > 0).mean()
+            # 0.5'e yakın olanı tercih et
+            binimg = b1 if abs(wr1 - 0.5) <= abs(wr2 - 0.5) else b2
+            info = {'mode': 'adaptive', 'auto_invert': True, 'block': block, 'C': C,
+                    'wr': (b1 > 0).mean() if binimg is b1 else (b2 > 0).mean()}
+        else:
+            flag = cv2.THRESH_BINARY_INV if invert else cv2.THRESH_BINARY
+            binimg = _th(flag)
+            info = {'mode': 'adaptive', 'auto_invert': False, 'invert': bool(invert),
+                    'block': block, 'C': C, 'wr': (binimg > 0).mean()}
+
         it['bin'] = binimg
-        
+        it['bin_info'] = info  # debug istersen bakarsın
+
     return items
-        
+
+
+
+
+
 
 
 
@@ -170,7 +243,7 @@ def save_img(items, prefix, out_dir='img_crops'):
 
 def crop_bottom_center(x1, y1, x2, y2, H, W, *, 
                        bottom_frac=0.6,   
-                       center_frac=0.7,   
+                       center_frac=0.6,   
                        pad=0):            
     # boyutlar
     w = max(1, x2 - x1)
@@ -253,7 +326,7 @@ save_img(items, 'gray')
 items = median_gray(items)
 save_img(items, 'median')
 
-items = binary(items)
+items = binarize_adaptive(items)
 save_img(items, 'bin')
 
 items = median_filter(items, 'bin', 'blurred_bin')
@@ -264,14 +337,16 @@ save_img(items, 'morph')
 
 
 
-clean = remove_small_white(items, min_area=500)   # eşiği görüntüne göre ayarla
+clean = remove_small_white(items, min_area=300)   # eşiği görüntüne göre ayarla
 
 
 save_img(items, 'cleaned_morph')
 
 
 
-
+n_saved = extract_and_save_plate_crops(items, img, mask_key='cleaned_morph',
+                                       out_dir='img_crops/plates', prefix='plate')
+print(f"Kaydedilen plaka sayısı: {n_saved}")
 
 
 

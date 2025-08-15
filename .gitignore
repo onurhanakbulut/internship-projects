@@ -20,3 +20,6 @@ license_plate_rec/img_crops/
 
 # debug ciktilari
 license_plate_rec/debug_out/
+
+#gpt
+license_palte_rec/plate_select.py
