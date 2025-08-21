@@ -22,4 +22,10 @@ license_plate_rec/img_crops/
 license_plate_rec/debug_out/
 
 #gpt
-license_palte_rec/plate_select.py
+license_plate_rec/py/plate_select.py
+
+
+#YOLO
+license_plate_rec/YOLO/DST/
+license_plate_rec/YOLO/plaka.yolo/
+license_plate_rec/YOLO/square/
