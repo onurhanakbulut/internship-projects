@@ -8,7 +8,7 @@ import csv
 import re
 import numpy as np
 
-# --- Ayarlar ---
+
 IN_DIR  = "plate_snaps"                 
 OUT_DIR = "plate_snaps_annotated"       
 CSV_OUT = "plate_snaps_results.csv"     
