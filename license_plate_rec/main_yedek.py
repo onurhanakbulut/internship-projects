@@ -51,17 +51,7 @@ model = YOLO('models/license_plate_detector.pt')
 
 raw = np.load("roi_groups.npy", allow_pickle=True)
 
-SNAP_EVERY = 10
-OUT_DIR = "plate_snaps"
-os.makedirs(OUT_DIR, exist_ok=True)
 
-def safe_crop(img, x1, y1, x2, y2, pad=6):
-    H, W = img.shape[:2]
-    x1 = max(0, x1 - pad); y1 = max(0, y1 - pad)
-    x2 = min(W, x2 + pad); y2 = min(H, y2 + pad)
-    if x2 > x1 and y2 > y1:
-        return img[y1:y2, x1:x2].copy()
-    return None
 
 
 
@@ -140,31 +130,12 @@ while cap.isOpened():
     res = model(masked, imgsz=640, verbose=False)[0]
     annotated = res.plot()
     
-    boxes = []
+    
     for box in res.boxes:
-        conf = float(box.conf[0])
-        if conf < 0.45:
-            continue
         x1, y1, x2, y2 = box.xyxy[0].cpu().numpy().astype(int)
-        boxes.append((x1, y1, x2, y2, conf))
         w = x2-x1
         h = y2-y1
         
-        if boxes:
-            # tek kutu: en yüksek güven
-            x1, y1, x2, y2, conf = max(boxes, key=lambda t: t[4])
-            w, h = x2 - x1, y2 - y1
-        
-            label = classify_plate((w, h))
-            stable_label = stabilizer.update(label)
-        
-            # her 10 karede bir, stabilse ve makul boyuttaysa kaydet
-            if (stable_label in ("square", "rectangle")) and (frame_id % SNAP_EVERY == 0) and (w >= 80 and h >= 25):
-                crop = safe_crop(frame, x1, y1, x2, y2, pad=6)
-                if crop is not None:
-                    fname = os.path.join(OUT_DIR, f"plate_{frame_id}.jpg")
-                    cv2.imwrite(fname, crop)
-                    print("Saved:", fname)
         
         label = classify_plate((w, h))
         stable_label = stabilizer.update(label)
