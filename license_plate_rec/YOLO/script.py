@@ -135,7 +135,6 @@ def main():
     print(f"Kare (square)  : {sq_count}")
     print(f"Dikdörtgen     : {rc_count}")
     print(f"Atlanan        : {skipped}")
-    print(f"Hedef klasörler: {out_sq.resolve()} / {out_rc.resolve()}")
     print("=======================")    
     
     
