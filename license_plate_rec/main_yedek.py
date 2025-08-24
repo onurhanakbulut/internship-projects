@@ -3,7 +3,7 @@ os.environ["KMP_DUPLICATE_LIB_OK"] = "TRUE"
 from ultralytics import YOLO
 import cv2
 import numpy as np
-import easyocr
+
 
 class StableLabel:
     def __init__(self, K=3):
@@ -43,7 +43,7 @@ class StableLabel:
 
 
 
-reader = easyocr.Reader(['en', 'tr'], gpu=True)
+
 video = 'data/fullvideo/192.168.1.130_ch5_20250507110001_20250507113001.avi'
 cap = cv2.VideoCapture(video)
 model = YOLO('models/license_plate_detector.pt')
@@ -51,18 +51,30 @@ model = YOLO('models/license_plate_detector.pt')
 
 raw = np.load("roi_groups.npy", allow_pickle=True)
 
+SNAP_EVERY = 10
+OCR_EVERY_N = 10
+OUT_DIR = "plate_snaps"
+os.makedirs(OUT_DIR, exist_ok=True)
+
+def safe_crop(img, x1, y1, x2, y2, pad=6):  
+    H, W = img.shape[:2]
+    x1 = max(0, x1 - pad); y1 = max(0, y1 - pad)
+    x2 = min(W, x2 + pad); y2 = min(H, y2 + pad)
+    if x2 > x1 and y2 > y1:
+        return img[y1:y2, x1:x2].copy()
+    return None
 
 
 
-
-def to_sigle_poly(raw):
+def to_single_poly(raw):
     arr = np.asarray(raw)
     if arr.ndim == 3 and arr.shape[0] == 1 and arr.shape[2] == 2:
         arr = arr[0]
     if arr.ndim == 2 and arr.shape[1] == 2:
         return arr.astype(np.int32)
     
-poly = to_sigle_poly(raw)
+
+poly = to_single_poly(raw)
 assert poly.ndim == 2 and poly.shape[1] == 2, f"Beklenen (N,2), gelen: {raw.shape}"
 pts_poly = poly.reshape(-1, 1, 2)
 
@@ -131,77 +143,46 @@ while cap.isOpened():
     annotated = res.plot()
     
     
+    
+    
+    boxes = []
     for box in res.boxes:
+        conf = float(box.conf[0])
+        if conf < 0.60:
+            continue
         x1, y1, x2, y2 = box.xyxy[0].cpu().numpy().astype(int)
+        boxes.append((x1, y1, x2, y2, conf))
         w = x2-x1
         h = y2-y1
         
+        if boxes:
+            
+            x1, y1, x2, y2, conf = max(boxes, key=lambda t: t[4])
+            w, h = x2 - x1, y2 - y1
+        
+            label = classify_plate((w, h))
+            stable_label = stabilizer.update(label)
+        
+            
+            if (stable_label in ("square", "rectangle")) and (frame_id % SNAP_EVERY == 0) and (w >= 80 and h >= 25):
+                crop = safe_crop(frame, x1, y1, x2, y2, pad=6)
+                if crop is not None:
+                    fname = os.path.join(OUT_DIR, f"plate_{frame_id}.jpg")
+                    cv2.imwrite(fname, crop)
+                    print("Saved:", fname)
         
         label = classify_plate((w, h))
         stable_label = stabilizer.update(label)
         print("Stable: ", stable_label)
         
-# =============================================================================
-#         can_ocr = (stable_label in ("square","rectangle")) and (not ocr_done) and (cooldown==0)
-# =============================================================================
+
         
-# =============================================================================
-#         if can_ocr:
-#             crop = frame[y1:y2, x1:x2]
-#             if crop is not None and crop.size > 0:
-#                 h_c, w_c = crop.shape[:2]
-#                 if w_c >= 80 and h_c >= 25:  # min boyut filtresi
-#                     gray = cv2.cvtColor(crop, cv2.COLOR_BGR2GRAY)
-#         
-#                     # basit iyileştirme: büyüt + CLAHE + hafif blur (isteğe bağlı)
-#                     if max(w_c, h_c) < 200:
-#                         gray = cv2.resize(gray, (w_c*2, h_c*2), interpolation=cv2.INTER_CUBIC)
-#         
-#                     clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8,8))
-#                     gray = clahe.apply(gray)
-#                     gray = cv2.medianBlur(gray, 3)
-#         
-#                     ocr_res = reader.readtext(gray, detail=1, paragraph=False)
-#         
-#                     best_txt, best_conf = None, -1.0
-#                     for item in ocr_res:
-#                         # detail=1 -> (bbox, text, conf) beklenir
-#                         if isinstance(item, (list, tuple)) and len(item) == 3:
-#                             _, txt, conf = item
-#                         elif isinstance(item, (list, tuple)) and len(item) == 2:
-#                             txt, conf = item
-#                         elif isinstance(item, str):
-#                             txt, conf = item, 0.0
-#                         else:
-#                             continue
-#         
-#                         # basit temizleme
-#                         clean = ''.join(ch for ch in txt if ch.isalnum())
-#                         if not clean:
-#                             continue
-#                         if conf is None:
-#                             conf = 0.0
-#         
-#                         if conf > best_conf:
-#                             best_conf = conf
-#                             best_txt = clean
-#         
-#                     if best_txt:
-#                         print(f"OCR -> {best_txt} (conf={best_conf:.2f})")
-#                         # ekrana da yazalım
-#                         cv2.putText(annotated, f"OCR: {best_txt} ({best_conf:.2f})", 
-#                                     (x1, max(0, y2+18)), cv2.FONT_HERSHEY_SIMPLEX, 0.65, (0,255,255), 2)
-#                         ocr_done = True
-#                         cooldown = 30   # ~1 sn @30fps
-#             else:
-#                 # olmadıysa kısa cooldown
-#                 cooldown = 10
-#             
-#             
-#         
-#         if cooldown > 0 :
-#             cooldown -= 1
-# =============================================================================
+
+
+
+
+
+
         
     
 
