@@ -3,6 +3,12 @@
 #data
 traffic_tracker/data/
 license_plate_rec/data/
+license_plate_rec/plates/
+license_plate_rec/plates2/
+license_plate_rec/plates3/
+license_plate_rec/plates4/
+license_plate_rec/prep_debug/
+license_plate_rec/plate_snaps/
 
 #ciktilar
 license_plate_rec/img_crops/
@@ -29,3 +35,6 @@ license_plate_rec/py/plate_select.py
 license_plate_rec/YOLO/DST/
 license_plate_rec/YOLO/plaka.yolo/
 license_plate_rec/YOLO/square/
+
+
+
